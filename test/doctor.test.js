@@ -244,3 +244,29 @@ test('deps --online never suggests a downgrade', async () => {
   const steps = doctor.planDepCommands(advice, project, 15);
   assert.ok(!steps.some((s) => /ng2-pdf-viewer/.test(s.command) && s.step !== 'manual'));
 });
+
+test('strict fixes TS2564, TS2322 null/undefined, TS7053/TS7015 and TS7016 without other changes', () => {
+  const root = copyFixture('ng22-strict');
+  fs.mkdirSync(path.join(root, 'node_modules/crypto-js'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'node_modules/crypto-js/package.json'), '{"name":"crypto-js","version":"4.2.0","main":"index.js"}');
+  fs.writeFileSync(path.join(root, 'node_modules/crypto-js/index.js'), 'module.exports = {};');
+  const project = new doctor.Project(root);
+  const plan = doctor.planStrictFixes(project);
+  assert.deepStrictEqual(plan.remaining, []);
+  assert.deepStrictEqual(plan.reverted, []);
+  assert.deepStrictEqual(plan.modules, ['crypto-js']);
+  doctor.applyStrictPlan(project, plan);
+  project.flush(false);
+  const src = read(root, 'src/app/score.component.ts');
+  assert.match(src, /bankarray!: any\[\];/);
+  assert.match(src, /private _value!: string;/);
+  assert.match(src, /optional\?: string;/, 'optional properties are left alone');
+  assert.match(src, /webcamImage: TableSource<any> = null as any;/);
+  assert.match(src, /this\.otp = this\.password = undefined as any;/);
+  assert.match(src, /\(this as any\)\[`score\$\{k - 1 \|\| ''\}`\] = e;/);
+  assert.match(src, /Number\(\(this as any\)\[key\]\)/);
+  assert.match(src, /\(this\.banking as any\)\['cin'\]/);
+  assert.match(src, /\(this\.panelClass as any\)\[panel\] = true;/);
+  assert.strictEqual(read(root, 'src/untyped-modules.d.ts'), "declare module 'crypto-js';\n");
+  assert.strictEqual(doctor.planStrictFixes(new doctor.Project(root)).fixes.length, 0, 'a second run finds nothing');
+});

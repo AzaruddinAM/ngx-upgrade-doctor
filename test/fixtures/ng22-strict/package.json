@@ -1,0 +1,1 @@
+{ "name": "ng22-strict", "version": "0.0.0", "dependencies": { "@angular/core": "^22.0.0", "crypto-js": "^4.2.0" } }

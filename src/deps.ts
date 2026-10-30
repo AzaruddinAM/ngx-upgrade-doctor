@@ -88,6 +88,8 @@ export async function adviseDeps(opts: DepsOptions): Promise<DepAdvice[]> {
   const unknown: string[] = [];
 
   for (const name of Object.keys(deps).sort()) {
+    // The doctor itself is not an Angular library and works with every version.
+    if (name === 'ngx-upgrade-doctor') continue;
     const current = project.installedVersion(name) || deps[name];
 
     const removal = REMOVALS.find((r) => r.name.test(name));

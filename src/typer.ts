@@ -42,7 +42,7 @@ interface Candidate {
   rest?: boolean;
 }
 
-interface Edit {
+export interface Edit {
   pos: number;
   text: string;
   order: number;
@@ -127,7 +127,7 @@ function editsFor(c: Candidate, type: string, sf: ts.SourceFile, parenArrows: Se
   return [{ pos: fn.parameters[0].end, text: `: ${type}`, order: 1 }];
 }
 
-function applyEdits(text: string, edits: Edit[]): string {
+export function applyEdits(text: string, edits: Edit[]): string {
   const sorted = edits.slice().sort((a, b) => a.pos - b.pos || a.order - b.order);
   let out = '';
   let last = 0;
@@ -174,7 +174,7 @@ function nameableType(type: ts.Type, node: ts.Node, checker: ts.TypeChecker, fil
 // Program helpers
 // ---------------------------------------------------------------------------
 
-function compilerOptions(project: Project): ts.CompilerOptions {
+export function compilerOptions(project: Project): ts.CompilerOptions {
   const fallback: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Node10,
     experimentalDecorators: true, skipLibCheck: true,
@@ -185,11 +185,11 @@ function compilerOptions(project: Project): ts.CompilerOptions {
   return parsed ? { ...parsed.options } : fallback;
 }
 
-function toAbs(project: Project, rel: string): string {
+export function toAbs(project: Project, rel: string): string {
   return path.join(project.root, rel).replace(/\\/g, '/');
 }
 
-function createProgram(
+export function createProgram(
   project: Project, rootNames: string[], options: ts.CompilerOptions, overrides?: Map<string, string>, oldProgram?: ts.Program,
 ): ts.Program {
   const host = ts.createCompilerHost(options, true);
@@ -201,6 +201,9 @@ function createProgram(
     const text = byAbs.get(norm(fileName));
     return text !== undefined ? ts.createSourceFile(fileName, text, lang, true) : original.call(host, fileName, lang, onError, shouldCreate);
   };
+  // New files (e.g. a declaration shim) exist only in memory; without this, program reuse keeps them missing.
+  const fileExists = host.fileExists;
+  host.fileExists = (fileName) => byAbs.has(norm(fileName)) || fileExists.call(host, fileName);
   const readFile = host.readFile;
   host.readFile = (fileName) => {
     const text = byAbs.get(norm(fileName));
@@ -209,13 +212,13 @@ function createProgram(
   return ts.createProgram({ rootNames, options: { ...options, noEmit: true }, host, oldProgram });
 }
 
-function diagnosticCount(program: ts.Program, absFile: string): number {
+export function diagnosticCount(program: ts.Program, absFile: string): number {
   const sf = program.getSourceFile(absFile);
   if (!sf) return 0;
   return program.getSyntacticDiagnostics(sf).length + program.getSemanticDiagnostics(sf).length;
 }
 
-function sourceFiles(project: Project, includeSpecs: boolean): string[] {
+export function sourceFiles(project: Project, includeSpecs: boolean): string[] {
   return project.files('.ts').filter((f) => !f.endsWith('.d.ts') && (includeSpecs || !/\.spec\.ts$/.test(f)));
 }
 

@@ -67,7 +67,8 @@ Then repeat for the next version. The official per-hop checklist is at [angular.
 2. **Print your route:** `ngx-upgrade-doctor plan --target 22`.
 3. **Install [nvm-windows](https://github.com/coreybutler/nvm-windows)** (or [nvm](https://github.com/nvm-sh/nvm) on macOS/Linux). The tool itself needs Node 14.17+, but `ng update` and `ng build` need the Node version of the hop — run the tool with a modern Node, then `nvm use` the hop's Node for the Angular commands. On hops below v12 the tool's Node check will therefore always flag the Node it runs on; that is the reminder of which Node to use for `ng`.
 4. **Using Angular Material?** Add `@angular/material@N` to every `ng update` below (the tool's `deps` command prints it for you).
-5. **Automate the updates:** in any hop below you can replace the `npx ng update …` line with `ngx-upgrade-doctor deps --target N --online --apply`. It runs `ng update`, then `npm install --save` for `dependencies` and `npm install --save-dev` for `devDependencies` (see [Automatic upgrade](#automatic-upgrade)).
+5. **Updates are automated:** every hop below uses `ngx-upgrade-doctor deps --target N --online --apply`. It shows the commands, asks `y/N`, then runs `ng update` for Angular/Material, `npm uninstall` for packages to remove, `npm install --save` for `dependencies` and `npm install --save-dev` for `devDependencies` (see [Automatic upgrade](#automatic-upgrade)). Preview with `--apply --dry-run`; skip the question with `--apply --yes`. Prefer to run `ng update` yourself? Use the `# by hand instead` line.
+6. **Install the tool globally** (`npm install -g ngx-upgrade-doctor`). Installing it into a project with git dependencies makes npm 8 rebuild them, which can fail with `pickAlgorithm` — see [Troubleshooting installs](#troubleshooting-installs).
 
 Each hop below lists the requirements, the commands, what the tool catches, and what you check by hand. `N` = the version you are moving to.
 
@@ -77,7 +78,8 @@ Each hop below lists the requirements, the commands, what the tool catches, and 
 ```bash
 ngx-upgrade-doctor scan --target 7
 ngx-upgrade-doctor fix --target 7
-npx ng update @angular/core@7 @angular/cli@7
+ngx-upgrade-doctor deps --target 7 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@7 @angular/cli@7
 ```
 
 - **Tool catches:** RxJS 5-style deep imports (`rxjs/Observable`, `rxjs/operators/map`, auto-fix), `rxjs-compat` still installed, TypeScript/RxJS/zone.js versions.
@@ -113,7 +115,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 ```bash
 ngx-upgrade-doctor scan --target 8
 ngx-upgrade-doctor fix --target 8
-npx ng update @angular/core@8 @angular/cli@8
+ngx-upgrade-doctor deps --target 8 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@8 @angular/cli@8
 ngx-upgrade-doctor current --fix
 ```
 
@@ -154,7 +157,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 ```bash
 ngx-upgrade-doctor scan --target 9
 ngx-upgrade-doctor fix --target 9
-npx ng update @angular/core@9 @angular/cli@9
+ngx-upgrade-doctor deps --target 9 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@9 @angular/cli@9
 ngx-upgrade-doctor current --fix
 ```
 
@@ -192,7 +196,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 ```bash
 ngx-upgrade-doctor scan --target 10
 ngx-upgrade-doctor fix --target 10
-npx ng update @angular/core@10 @angular/cli@10
+ngx-upgrade-doctor deps --target 10 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@10 @angular/cli@10
 ```
 
 - **Blocker:** `ModuleWithProviders` needs its type argument (auto-fix: `ModuleWithProviders<SharedModule>`). Third-party modules without it need a library upgrade — run `deps --target 10 --online`.
@@ -227,7 +232,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 
 ```bash
 ngx-upgrade-doctor scan --target 11
-npx ng update @angular/core@11 @angular/cli@11
+ngx-upgrade-doctor deps --target 11 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@11 @angular/cli@11
 ngx-upgrade-doctor current --fix
 ```
 
@@ -264,7 +270,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 ```bash
 ngx-upgrade-doctor scan --target 12
 ngx-upgrade-doctor fix --target 12
-npx ng update @angular/core@12 @angular/cli@12 @angular/material@12
+ngx-upgrade-doctor deps --target 12 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@12 @angular/cli@12 @angular/material@12
 ngx-upgrade-doctor current --fix
 ```
 
@@ -305,8 +312,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 
 ```bash
 ngx-upgrade-doctor scan --target 13
-ngx-upgrade-doctor deps --target 13 --online
-npx ng update @angular/core@13 @angular/cli@13
+ngx-upgrade-doctor deps --target 13 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@13 @angular/cli@13
 ngx-upgrade-doctor current --fix
 ```
 
@@ -344,7 +351,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 
 ```bash
 ngx-upgrade-doctor scan --target 14
-npx ng update @angular/core@14 @angular/cli@14
+ngx-upgrade-doctor deps --target 14 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@14 @angular/cli@14
 ngx-upgrade-doctor current --fix
 ```
 
@@ -381,8 +389,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 
 ```bash
 ngx-upgrade-doctor scan --target 15
-ngx-upgrade-doctor deps --target 15 --online
-npx ng update @angular/core@15 @angular/cli@15 @angular/material@15
+ngx-upgrade-doctor deps --target 15 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@15 @angular/cli@15 @angular/material@15
 ```
 
 - **Blockers:** `zone.js/dist` imports, Protractor.
@@ -420,8 +428,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 
 ```bash
 ngx-upgrade-doctor scan --target 16
-ngx-upgrade-doctor deps --target 16 --online
-npx ng update @angular/core@16 @angular/cli@16 @angular/material@16
+ngx-upgrade-doctor deps --target 16 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@16 @angular/cli@16 @angular/material@16
 ```
 
 - **Blockers:** `ngcc` in `postinstall` (auto-fix), any library still built for View Engine.
@@ -458,7 +466,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 ```bash
 ngx-upgrade-doctor scan --target 17
 ngx-upgrade-doctor fix --target 17
-npx ng update @angular/core@17 @angular/cli@17 @angular/material@17
+ngx-upgrade-doctor deps --target 17 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@17 @angular/cli@17 @angular/material@17
 ngx-upgrade-doctor current --fix
 ```
 
@@ -497,7 +506,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 
 ```bash
 ngx-upgrade-doctor scan --target 18
-npx ng update @angular/core@18 @angular/cli@18
+ngx-upgrade-doctor deps --target 18 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@18 @angular/cli@18
 ```
 
 - **Tool catches:** `HttpClientModule` — replace with `provideHttpClient(withInterceptorsFromDi())`; in tests `provideHttpClientTesting()`.
@@ -532,7 +542,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 
 ```bash
 ngx-upgrade-doctor scan --target 19
-npx ng update @angular/core@19 @angular/cli@19
+ngx-upgrade-doctor deps --target 19 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@19 @angular/cli@19
 ```
 
 - **By hand:** components are standalone by default now; `ng update` adds `standalone: false` to the ones still declared in an NgModule. Migrate with `ng generate @angular/core:standalone` when ready.
@@ -567,7 +578,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 
 ```bash
 ngx-upgrade-doctor scan --target 20
-npx ng update @angular/core@20 @angular/cli@20
+ngx-upgrade-doctor deps --target 20 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@20 @angular/cli@20
 ```
 
 - **Tool catches:** `*ngIf`/`*ngFor`/`*ngSwitch` are deprecated (warning from this version) — run `ng generate @angular/core:control-flow`. `@angular/animations` usage (deprecated in 20.2).
@@ -603,7 +615,8 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 
 ```bash
 ngx-upgrade-doctor scan --target 21
-npx ng update @angular/core@21 @angular/cli@21
+ngx-upgrade-doctor deps --target 21 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@21 @angular/cli@21
 ```
 
 - **Tool catches:** `@angular/animations` (now a warning), and suggests zoneless change detection and Vitest — both are defaults for new apps only; existing apps keep zone.js and Karma until you choose to move.
@@ -638,13 +651,14 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 
 ```bash
 ngx-upgrade-doctor scan --target 22
-ngx-upgrade-doctor deps --target 22 --online
-npx ng update @angular/core@22 @angular/cli@22
+ngx-upgrade-doctor deps --target 22 --online --apply   # ng update + npm install --save / --save-dev
+# by hand instead: npx ng update @angular/core@22 @angular/cli@22
 ngx-upgrade-doctor types --dry-run
 ngx-upgrade-doctor types
+ngx-upgrade-doctor strict          # strict-mode errors left after the types pass
 ```
 
-- **Tool catches:** version requirements, and after the update offers to add explicit types (see [Explicit types](#explicit-types-v22)). Do the types pass as a separate commit.
+- **Tool catches:** version requirements, and after the update offers to add explicit types (see [Explicit types](#explicit-types-v22)), then to fix the strict-mode errors that remain (see [Strict-mode errors](#strict-mode-errors)). Do each as a separate commit.
 - **By hand:** read the v22 release notes; this tool's v22 Node/TypeScript ranges are marked to verify against [angular.dev/reference/versions](https://angular.dev/reference/versions).
 
 **Dependencies for v22**
@@ -682,6 +696,7 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 | `deps --target <N>` | before `ng update` | Per package: `ng update`, upgrade (with version), remove or replace, plus the commands in order. |
 | `plan [--target 22]` | once, at the start | Every hop with its Node and TypeScript requirements and commands. |
 | `types` | on v22+ | Adds explicit types to variables, parameters, properties and return types. |
+| `strict` | after `types`, or any time with `strict: true` | Fixes TS2564, TS2322 (`null`/`undefined`), TS7053, TS7015 and TS7016 compiler errors. |
 | `rules` | any time | Lists every rule with its version range. |
 
 ### Options
@@ -689,7 +704,7 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 | Option | Commands | Meaning |
 |---|---|---|
 | `--project <dir>` | all | Workspace root (default: current folder) |
-| `--dry-run` | `fix`, `current --fix`, `types` | Show what would change, write nothing |
+| `--dry-run` | `fix`, `current --fix`, `types`, `strict`, `deps --apply` | Show what would change, write nothing |
 | `--json` | `scan`, `current`, `deps` | Machine-readable output |
 | `--verbose` | all | Show every finding |
 | `--fix` / `--tsc` / `--all` | `current` | Apply fixes / add TypeScript errors / include suggestions |
@@ -697,6 +712,7 @@ Library versions are the tool's built-in best guess; confirm them for your exact
 | `--latest` | `deps --online` | Suggest the newest compatible release instead of the smallest upgrade |
 | `--apply`, `--yes`, `--allow-dirty`, `--ng-force`, `--legacy-peer-deps` | `deps` | Run the upgrade commands — see [Automatic upgrade](#automatic-upgrade) |
 | `--mode`, `--yes`, `--no-specs`, `--skip-callbacks`, `--force` | `types` | See [Explicit types](#explicit-types-v22) |
+| `--yes`, `--no-specs` | `strict` | See [Strict-mode errors](#strict-mode-errors) |
 
 `ngx-upgrade-doctor --target 8` is shorthand for `scan --target 8`.
 
@@ -825,6 +841,30 @@ ngx-upgrade-doctor types --mode infer --yes    # no prompts
 
 Every file is type-checked with the new types before it is written; a file that would gain compiler errors is skipped and listed. Not annotated: destructured variables, `for…of`/`for…in` variables, constructors, setters and generators.
 
+After the types pass, the tool checks for strict-mode errors and offers to fix them (`--yes` fixes them without asking).
+
+## Strict-mode errors
+
+Projects written before `"strict": true` fail `ng build` with hundreds of errors even after every declaration has a type. The `strict` command fixes the common ones without changing what the code does at runtime — every edit is a type-level assertion:
+
+```bash
+ngx-upgrade-doctor strict --dry-run --verbose   # preview every fix
+ngx-upgrade-doctor strict                       # review, confirm y/N
+ngx-upgrade-doctor strict --yes                 # no prompt
+```
+
+| Error | Example | Fix |
+|---|---|---|
+| TS2564 property has no initializer | `bankarray: any[];` | `bankarray!: any[];` — it is assigned later (ngOnInit, a subscribe, @Input) |
+| TS2322 `null`/`undefined` not assignable | `this.otp = undefined;` · `webcamImage: WebcamImage = null;` | `this.otp = undefined as any;` · `= null as any;` |
+| TS7053 dynamic key on a class | ``this[`score${i}`] = e;`` · `this[field] = '';` | ``(this as any)[`score${i}`] = e;`` |
+| TS7015 string index on a non-object | `this.banking['cin']` | `(this.banking as any)['cin']` |
+| TS7016 package without types | `import * as CryptoJS from 'crypto-js';` | adds `declare module 'crypto-js';` to `src/typings.d.ts` (or a new `src/untyped-modules.d.ts`) and prints `npm install --save-dev @types/crypto-js` — the better fix where it exists |
+
+Like the types pass, every file is recompiled before it is written; a file that would gain errors is skipped and listed. Errors the tool does not fix (for example `Object is possibly 'undefined'`, TS18048) are listed at the end so you can fix them by hand. Template errors only show in `ng build`, so run it afterwards.
+
+These fixes keep the build green; they are not good types. Over time, replace `!` with a real initial value (`bankarray: any[] = [];`), `as any` with `T | null`, and `(this as any)[key]` with a typed map such as `scores: Record<string, string> = {}`.
+
 ## Use in CI
 
 ```yaml
@@ -837,7 +877,7 @@ The step fails while blockers remain. Use `--json` to feed the results into othe
 ## Programmatic API
 
 ```ts
-import { Project, scan, fix, adviseDeps, planTypes } from 'ngx-upgrade-doctor';
+import { Project, scan, fix, adviseDeps, planTypes, planStrictFixes } from 'ngx-upgrade-doctor';
 
 const project = new Project(process.cwd());
 const results = scan({ project, mode: 'target', target: 12 });

@@ -6,6 +6,7 @@ import { GitDependency, adviseDeps, applyDepCommands, gitDependencies, otherPack
 import { RULES, severityAt } from './rules';
 import { c, printDeps, printFindings, printSummary } from './report';
 import { compileDiagnostics } from './tsc';
+import { StrictFixKind, applyStrictPlan, planStrictFixes } from './strict';
 import { TypeMode, applyTypePlan, collectUntyped, planTypes } from './typer';
 import { MAX_VERSION, MIN_VERSION, requirementsFor, recommendedFromRange } from './versions';
 
@@ -35,6 +36,9 @@ ${c.bold('Commands')}
          --yes          Apply without asking     --no-specs   Skip *.spec.ts
          --skip-callbacks  Leave arr.map(x => ...) style callbacks alone
          --force        Run on versions below 22
+  strict                Fix strict-mode compiler errors: TS2564 (name!:), TS2322 null/undefined (as any),
+                        TS7053/TS7015 (this[key] → (this as any)[key]), TS7016 (declare module shim)
+         --yes          Apply without asking     --no-specs   Skip *.spec.ts
   rules                 List every rule
 
 ${c.bold('Options')}
@@ -320,7 +324,7 @@ async function cmdTypes(project: Project, flags: Flags): Promise<number> {
   const total = plan.annotations.length;
   if (!total && !plan.reverted.length) {
     console.log(c.green('Every declaration already has an explicit type.'));
-    return 0;
+    return offerStrict(project, flags);
   }
   const byKind: Record<string, number> = {};
   for (const a of plan.annotations) byKind[a.kind] = (byKind[a.kind] || 0) + 1;
@@ -353,7 +357,80 @@ async function cmdTypes(project: Project, flags: Flags): Promise<number> {
   const written = project.flush(false);
   console.log(c.green(`\nUpdated ${written.length} file(s).`));
   console.log(`Next: enable ${c.cyan('"noImplicitAny": true')} (or ${c.cyan('"strict": true')}) in tsconfig.json so new code stays typed, then ng build.`);
+  return offerStrict(project, { ...flags, fresh: true });
+}
+
+const STRICT_LABEL: Record<StrictFixKind, string> = {
+  'definite-assignment': 'TS2564 property assigned later → name!:',
+  'null-as-any': 'TS2322 null/undefined assigned to a typed value → as any',
+  'index-as-any': 'TS7053/TS7015 dynamic index → (x as any)[key]',
+  'module-shim': 'TS7016 package without types → declare module',
+};
+
+async function cmdStrict(project: Project, flags: Flags): Promise<number> {
+  console.log(c.gray('Compiling with the workspace tsconfig to find strict-mode errors…'));
+  const plan = planStrictFixes(project, { includeSpecs: flags.specs !== false });
+  if (!plan.fixes.length) {
+    console.log(plan.remaining.length
+      ? c.yellow(`No auto-fixable strict-mode errors; ${plan.remaining.length} compiler error(s) need a hand (run with --verbose).`)
+      : c.green('No strict-mode errors.'));
+    if (flags.verbose) for (const r of plan.remaining) console.log(`  ${c.gray(`${r.file}:${r.line}`)}  ${r.message}`);
+    return 0;
+  }
+  const byKind: Partial<Record<StrictFixKind, number>> = {};
+  for (const f of plan.fixes) byKind[f.kind] = (byKind[f.kind] || 0) + 1;
+  console.log(`\n${c.bold(`${plan.fixes.length} strict-mode fix(es) in ${plan.output.size} file(s)`)}`);
+  for (const [kind, n] of Object.entries(byKind)) console.log(`  ${String(n).padStart(4)}  ${STRICT_LABEL[kind as StrictFixKind]}`);
+  const sample = flags.verbose ? plan.fixes : plan.fixes.slice(0, 15);
+  for (const f of sample) console.log(`  ${c.gray(`${f.file}:${f.line}`)}  TS${f.code} ${c.bold(f.name)}`);
+  if (plan.fixes.length > sample.length) console.log(c.gray(`  … and ${plan.fixes.length - sample.length} more (use --verbose)`));
+  if (plan.shimFile) {
+    console.log(`\nPackages without types are declared in ${c.cyan(plan.shimFile)}. Better, where it exists:`);
+    console.log(`  npm install --save-dev ${plan.modules.map((m) => `@types/${m.replace(/^@([^/]+)\//, '$1__')}`).join(' ')}`);
+    console.log(c.gray('  then remove the line from the shim. The shim must be in tsconfig.app.json "include" (default: src/**/*.d.ts).'));
+  }
+  if (plan.reverted.length) {
+    console.log(c.yellow(`\nSkipped ${plan.reverted.length} file(s) where the fixes would add compiler errors:`));
+    for (const f of plan.reverted) console.log(`  ${f}`);
+  }
+  if (plan.remaining.length) {
+    console.log(c.yellow(`\n${plan.remaining.length} compiler error(s) remain after these fixes and need a hand:`));
+    const rest = flags.verbose ? plan.remaining : plan.remaining.slice(0, 10);
+    for (const r of rest) console.log(`  ${c.gray(`${r.file}:${r.line}`)}  ${r.message}`);
+    if (plan.remaining.length > rest.length) console.log(c.gray(`  … and ${plan.remaining.length - rest.length} more (use --verbose)`));
+  }
+
+  if (flags['dry-run']) return 0;
+  if (!flags.yes) {
+    if (!interactive(flags)) {
+      console.log(`\nRe-run with ${c.cyan('--yes')} to apply.`);
+      return 0;
+    }
+    const a = await ask('\nApply these fixes? (y/N) ');
+    if (!/^y(es)?$/i.test(a)) {
+      console.log('No changes made.');
+      return 0;
+    }
+  }
+  applyStrictPlan(project, plan);
+  const written = project.flush(false);
+  console.log(c.green(`\nUpdated ${written.length} file(s).`) + ' Run ng build to check template errors too.');
   return 0;
+}
+
+/** After the types pass: offer to fix what strict mode still reports. */
+async function offerStrict(project: Project, flags: Flags): Promise<number> {
+  if (flags['dry-run']) return 0;
+  const p = flags.fresh ? new Project(project.root) : project;
+  const plan = planStrictFixes(p, { includeSpecs: flags.specs !== false });
+  if (!plan.fixes.length) return 0;
+  console.log(`\n${c.cyan('ℹ')} Strict mode still reports ${plan.fixes.length} error(s) the tool can fix (TS2564, TS2322, TS7053, TS7015, TS7016).`);
+  if (!flags.yes && !interactive(flags)) {
+    console.log(`   Run ${c.cyan('ngx-upgrade-doctor strict')} to fix them.`);
+    return 0;
+  }
+  if (!flags.yes && !/^y(es)?$/i.test(await ask('   Fix them now? (y/N) '))) return 0;
+  return cmdStrict(p, { ...flags, yes: true });
 }
 
 async function offerTypes(project: Project, flags: Flags): Promise<void> {
@@ -437,6 +514,7 @@ export async function main(argv: string[]): Promise<number> {
     case 'deps': return cmdDeps(project, flags);
     case 'plan': return cmdPlan(project, flags);
     case 'types': return cmdTypes(project, flags);
+    case 'strict': return cmdStrict(project, flags);
     default:
       console.error(`Unknown command "${command}".`);
       console.log(HELP);
