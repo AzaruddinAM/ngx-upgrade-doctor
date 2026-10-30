@@ -1,6 +1,6 @@
 {
   "name": "ngx-upgrade-doctor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Scan, fix and plan Angular major-version upgrades one hop at a time (6 -> 22), with dependency advice and an explicit-types pass for v22+.",
   "keywords": [
     "angular",
