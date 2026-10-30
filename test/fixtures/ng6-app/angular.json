@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "projects": { "los-app": { "architect": { "build": { "builder": "@angular-devkit/build-angular:browser" } } } },
+  "defaultProject": "los-app"
+}

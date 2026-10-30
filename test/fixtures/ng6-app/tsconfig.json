@@ -1,0 +1,5 @@
+{
+  // root config
+  "compilerOptions": { "target": "es5", "module": "es2015", "experimentalDecorators": true, },
+  "angularCompilerOptions": { "fullTemplateTypeCheck": true, "enableIvy": false }
+}

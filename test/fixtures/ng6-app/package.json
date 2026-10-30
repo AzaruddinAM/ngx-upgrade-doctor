@@ -1,0 +1,27 @@
+{
+  "name": "los-app",
+  "version": "1.0.0",
+  "scripts": { "postinstall": "ngcc --properties es2015 && node scripts/patch.js" },
+  "dependencies": {
+    "@angular/core": "^6.1.0",
+    "@angular/common": "^6.1.0",
+    "@angular/http": "^6.1.0",
+    "@angular/material": "^6.4.7",
+    "@angular/cdk": "^6.4.7",
+    "@ng-bootstrap/ng-bootstrap": "^3.0.0",
+    "ngx-toastr": "^8.10.0",
+    "rxjs": "^6.2.0",
+    "rxjs-compat": "^6.2.0",
+    "zone.js": "~0.8.26",
+    "core-js": "^2.5.4"
+  },
+  "devDependencies": {
+    "@angular/cli": "~6.2.0",
+    "@angular-devkit/build-angular": "~0.8.0",
+    "node-sass": "^4.9.3",
+    "tslint": "~5.11.0",
+    "codelyzer": "~4.5.0",
+    "protractor": "~5.4.0",
+    "typescript": "~2.9.2"
+  }
+}

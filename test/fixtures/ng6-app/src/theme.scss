@@ -1,0 +1,14 @@
+@import '~@angular/material/theming';
+@import '~bootstrap/scss/bootstrap';
+
+@include mat-core();
+
+$app-primary: mat-palette($mat-indigo);
+$app-accent: mat-palette($mat-pink, A200, A100, A400);
+$app-theme: mat-light-theme($app-primary, $app-accent);
+
+@include angular-material-theme($app-theme);
+@include mat-button-theme($app-theme);
+
+.header { color: mat-color($app-primary); }
+.mat-form-field-infix { padding: 4px 0; }

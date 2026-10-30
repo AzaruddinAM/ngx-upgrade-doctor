@@ -1,0 +1,6 @@
+{
+  "name": "los-app",
+  "version": "22.0.0",
+  "dependencies": { "@angular/core": "^22.0.0", "rxjs": "~7.8.0" },
+  "devDependencies": { "typescript": "~5.9.0" }
+}

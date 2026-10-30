@@ -1,0 +1,39 @@
+{
+  "name": "ngx-upgrade-doctor",
+  "version": "0.2.0",
+  "description": "Scan, fix and plan Angular major-version upgrades one hop at a time (6 -> 22), with dependency advice and an explicit-types pass for v22+.",
+  "keywords": [
+    "angular",
+    "upgrade",
+    "migration",
+    "ng update",
+    "codemod",
+    "cli"
+  ],
+  "license": "MIT",
+  "bin": {
+    "ngx-upgrade-doctor": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=14.17"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"test/**/*.test.js\"",
+    "prepublishOnly": "npm test"
+  },
+  "dependencies": {
+    "semver": "^7.6.3",
+    "typescript": "^5.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/semver": "^7.5.8"
+  }
+}
