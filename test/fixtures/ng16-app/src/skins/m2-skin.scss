@@ -1,0 +1,11 @@
+@use '@angular/material' as m;
+
+$p: m.m2-define-palette(m.$m2-indigo-palette);
+$a: m.m2-define-palette(m.$m2-pink-palette, A200, A100, A400);
+$w: m.m2-define-palette(m.$m2-red-palette);
+
+$light: m.m2-define-light-theme($p, $a, $w);
+$dark: m.m2-define-dark-theme(
+  $p,
+  $a
+);

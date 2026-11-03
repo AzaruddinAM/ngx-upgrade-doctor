@@ -1,0 +1,3 @@
+<a routerLink='../settings/change-password'>Change password</a>
+<a [routerLink]="['../../profile', userId]">Profile</a>
+<a *ngFor="let menu of menus" [routerLink]="[menu.routerLink]">{{ menu.title }}</a>

@@ -1,3 +1,5 @@
+import * as semver from 'semver';
+
 /**
  * Toolchain requirements per Angular major.
  * Source: https://angular.dev/reference/versions (and the v6–v12 archived docs).
@@ -28,8 +30,8 @@ export const REQUIREMENTS: Record<number, AngularRequirements> = {
   18: { node: '^18.19.1 || ^20.11.1 || ^22.0.0', typescript: '>=5.4.0 <5.6.0', rxjs: '^6.5.3 || ^7.4.0', zone: '~0.14.0' },
   19: { node: '^18.19.1 || ^20.11.1 || ^22.0.0', typescript: '>=5.5.0 <5.9.0', rxjs: '^6.5.3 || ^7.4.0', zone: '~0.15.0' },
   20: { node: '^20.19.0 || ^22.12.0 || ^24.0.0', typescript: '>=5.8.0 <5.9.0', rxjs: '^6.5.3 || ^7.4.0', zone: '~0.15.0' },
-  21: { node: '^20.19.0 || ^22.12.0 || ^24.0.0', typescript: '>=5.9.0 <6.0.0', rxjs: '^6.5.3 || ^7.4.0', zone: '~0.15.0' },
-  22: { node: '^22.12.0 || ^24.0.0', typescript: '>=5.9.0 <6.1.0', rxjs: '^7.4.0', zone: '~0.15.0', verify: true },
+  21: { node: '^20.19.0 || ^22.12.0 || >=24.0.0', typescript: '>=5.9.0 <6.0.0', rxjs: '^6.5.3 || ^7.4.0', zone: '~0.15.0' },
+  22: { node: '^22.22.3 || ^24.15.0 || >=26.0.0', typescript: '>=5.9.0 <6.1.0', rxjs: '^7.4.0', zone: '~0.15.0', verify: true },
 };
 
 export const MIN_VERSION = 6;
@@ -43,4 +45,18 @@ export function requirementsFor(major: number): AngularRequirements | undefined 
 export function recommendedFromRange(range: string): string {
   const bounds = range.split('||').map((r) => r.trim().replace(/^[\^~>=<\s]+/, '').split(/\s/)[0]);
   return bounds[bounds.length - 1];
+}
+
+/**
+ * What to install for a Node range: the latest release of its newest major (`nvm install 20`),
+ * not the range's minimum — current tooling (e.g. recent sass) often needs a later minor.
+ */
+export function suggestedNode(range: string): { major: number; text: string } {
+  const major = Number(recommendedFromRange(range).split('.')[0]);
+  return { major, text: `the latest Node ${major}.x (nvm install ${major})` };
+}
+
+/** Whether the running Node fits a range, for the plan: "your Node 20.18.1 fits" / "your Node 18.10.0 does not fit". */
+export function nodeFit(range: string, node = process.versions.node): string {
+  return semver.satisfies(node, range) ? `your Node ${node} fits` : `your Node ${node} does not fit`;
 }

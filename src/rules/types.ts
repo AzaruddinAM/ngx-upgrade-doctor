@@ -15,6 +15,10 @@ export interface RawFinding {
   message: string;
   file?: string;
   line?: number;
+  /** False when the rule's auto-fix cannot handle this finding (defaults to whether the rule has a fix). */
+  fixable?: boolean;
+  /** Overrides the rule's severity for this finding (e.g. a file outside the app build). */
+  severity?: Severity;
 }
 
 export interface Finding extends RawFinding {

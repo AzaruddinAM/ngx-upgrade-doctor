@@ -1,14 +1,19 @@
 import * as ts from 'typescript';
 import { Project } from './project';
-import { Edit, applyEdits, compilerOptions, createProgram, diagnosticCount, sourceFiles, toAbs } from './typer';
+import {
+  Edit, anyAnnotationEdits, applyEdits, compilerOptions, createProgram, diagnosticCount, nullishDeclaration, sourceFiles, toAbs,
+} from './typer';
+import { removeJsonProp, setJsonOption } from './rules/helpers';
 
 /**
  * definite-assignment — `name: T;` → `name!: T;` (TS2564, assigned later in ngOnInit, a subscribe, …)
  * null-as-any         — `x = null` → `x = null as any` (TS2322 for a null/undefined literal)
  * index-as-any        — `this[key]` → `(this as any)[key]` (TS7053, TS7015)
  * module-shim         — `declare module 'name';` for packages without types (TS7016)
+ * possibly-undefined  — `const res = …` → `const res: any = …`, `res => …` → `(res: any) => …`
+ *                       (TS18048/18047/18049/2531/2532/2533 possibly 'undefined'/'null', TS18046 catch variable 'unknown')
  */
-export type StrictFixKind = 'definite-assignment' | 'null-as-any' | 'index-as-any' | 'module-shim';
+export type StrictFixKind = 'definite-assignment' | 'null-as-any' | 'index-as-any' | 'module-shim' | 'possibly-undefined';
 
 export interface StrictFix {
   file: string;
@@ -93,6 +98,7 @@ function fixesFor(program: ts.Program, project: Project, files: string[]): Round
     const sf = program.getSourceFile(toAbs(project, file));
     if (!sf) continue;
     const list: Edit[] = [];
+    const checker = program.getTypeChecker();
     const seen = new Set<number>();
     const add = (d: ts.Diagnostic, kind: StrictFixKind, name: string, ...e: Edit[]): void => {
       if (seen.has(e[0].pos)) return;
@@ -103,7 +109,10 @@ function fixesFor(program: ts.Program, project: Project, files: string[]): Round
     for (const d of program.getSemanticDiagnostics(sf)) {
       if (d.start === undefined) continue;
       const message = ts.flattenDiagnosticMessageText(d.messageText, '\n');
-      if (d.code === 2564) {
+      const nullish = nullishDeclaration(checker, sf, d);
+      if (nullish) {
+        add(d, 'possibly-undefined', nullish.name.getText(sf), ...anyAnnotationEdits(nullish, sf));
+      } else if (d.code === 2564) {
         const prop = innermost(sf, d.start).parent;
         if (prop && ts.isPropertyDeclaration(prop) && !prop.questionToken && !prop.exclamationToken) {
           add(d, 'definite-assignment', prop.name.getText(sf), { pos: prop.name.end, text: '!', order: 0 });
@@ -135,13 +144,27 @@ function fixesFor(program: ts.Program, project: Project, files: string[]): Round
  * Fixes the errors `strict: true` reports in code written before strict mode, keeping runtime behaviour:
  * every edit is a type-level assertion. Verified by recompiling — a file that would gain errors is left untouched.
  */
-export function planStrictFixes(project: Project, opts: { includeSpecs?: boolean } = {}): StrictPlan {
+/** The individual flags `strict` turns on; an explicit `false` for any of them overrides `strict: true`. */
+export const STRICT_FAMILY = [
+  'noImplicitAny', 'strictNullChecks', 'strictFunctionTypes', 'strictBindCallApply', 'strictPropertyInitialization',
+  'noImplicitThis', 'alwaysStrict', 'useUnknownInCatchVariables', 'strictBuiltinIteratorReturn',
+];
+
+/**
+ * `strict`: type-check as if the tsconfig said `"strict": true` (and no strict flag was turned off), to plan
+ * the fixes before `enableStrict` flips the tsconfig.
+ */
+export function planStrictFixes(project: Project, opts: { includeSpecs?: boolean; strict?: boolean } = {}): StrictPlan {
   const files = sourceFiles(project, opts.includeSpecs !== false);
   const shimFile = SHIM_FILES.find((f) => project.exists(f)) || SHIM_FILES[SHIM_FILES.length - 1];
   const declarations = project.files('.d.ts');
   if (!declarations.includes(shimFile)) declarations.push(shimFile);
   const rootNames = [...files, ...declarations].map((f) => toAbs(project, f));
   const options = compilerOptions(project);
+  if (opts.strict) {
+    for (const flag of STRICT_FAMILY) delete (options as Record<string, unknown>)[flag];
+    options.strict = true;
+  }
 
   const initial = createProgram(project, rootNames, options);
   const output = new Map<string, string>();
@@ -198,4 +221,45 @@ export function planStrictFixes(project: Project, opts: { includeSpecs?: boolean
 /** Writes a plan into the project (in memory; call project.flush to save). */
 export function applyStrictPlan(project: Project, plan: StrictPlan): void {
   for (const [file, text] of plan.output) project.write(file, text);
+}
+
+export interface StrictConfigChange {
+  file: string;
+  /** What changed in that tsconfig, for the report. */
+  changes: string[];
+}
+
+/**
+ * Turns strict mode on in the workspace tsconfigs: every `"strict": false` becomes `true` (or `"strict": true` is
+ * added to tsconfig.json when no file sets it), and explicit `false` strict-family flags are removed so they
+ * stop overriding it. Writes into the project (in memory).
+ */
+export function enableStrict(project: Project): StrictConfigChange[] {
+  const files = project.files('.json').filter((f) => /(^|\/)tsconfig[^/]*\.json$/.test(f));
+  const out: StrictConfigChange[] = [];
+  let declared = false;
+  for (const file of files) {
+    let text = project.read(file);
+    const changes: string[] = [];
+    if (/"strict"\s*:/.test(text)) declared = true;
+    if (/"strict"\s*:\s*false/.test(text)) {
+      text = text.replace(/("strict"\s*:\s*)false/, '$1true');
+      changes.push('"strict": false → true');
+    }
+    for (const flag of STRICT_FAMILY) {
+      if (new RegExp(`"${flag}"\\s*:\\s*false`).test(text)) {
+        text = removeJsonProp(text, flag, 'false');
+        changes.push(`removed "${flag}": false`);
+      }
+    }
+    if (changes.length) {
+      project.write(file, text);
+      out.push({ file, changes });
+    }
+  }
+  if (!declared && project.exists('tsconfig.json')) {
+    project.write('tsconfig.json', setJsonOption(project.read('tsconfig.json'), 'compilerOptions', 'strict', 'true'));
+    out.push({ file: 'tsconfig.json', changes: ['added "strict": true'] });
+  }
+  return out;
 }

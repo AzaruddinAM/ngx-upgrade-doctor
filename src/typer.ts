@@ -6,8 +6,9 @@ import { Project } from './project';
  * infer        — annotate every declaration with the type TypeScript infers; `any` when it cannot be named safely.
  * any          — annotate every declaration with `any`.
  * implicit-any — only annotate what `noImplicitAny` reports, with `any`.
+ * nullable     — only annotate the locals/parameters `strictNullChecks` calls possibly 'undefined'/'null' (TS18048…), with `any`.
  */
-export type TypeMode = 'infer' | 'any' | 'implicit-any';
+export type TypeMode = 'infer' | 'any' | 'implicit-any' | 'nullable';
 export type DeclKind = 'parameter' | 'variable' | 'property' | 'return';
 
 export interface TypeOptions {
@@ -247,6 +248,7 @@ export function planTypes(project: Project, opts: TypeOptions): TypePlan {
   const rootNames = [...files, ...declarations].map((f) => toAbs(project, f));
   const options = compilerOptions(project);
   if (opts.mode === 'implicit-any') options.noImplicitAny = true;
+  if (opts.mode === 'nullable') options.strictNullChecks = options.useUnknownInCatchVariables = true;
 
   const program = createProgram(project, rootNames, options);
   const checker = program.getTypeChecker();
@@ -257,7 +259,7 @@ export function planTypes(project: Project, opts: TypeOptions): TypePlan {
   for (const file of files) {
     const sf = program.getSourceFile(toAbs(project, file));
     if (!sf) continue;
-    let candidates = collectCandidates(sf, opts);
+    let candidates = opts.mode === 'nullable' ? nullableCandidates(program, sf) : collectCandidates(sf, opts);
     if (opts.mode === 'implicit-any') candidates = implicitAnyCandidates(program, sf, candidates);
     if (!candidates.length) continue;
 
@@ -320,7 +322,79 @@ function implicitAnyCandidates(program: ts.Program, sf: ts.SourceFile, candidate
   return candidates.filter((c) => picked.has(c));
 }
 
+function nullableCandidates(program: ts.Program, sf: ts.SourceFile): Candidate[] {
+  const checker = program.getTypeChecker();
+  const decls = new Set<ts.VariableDeclaration | ts.ParameterDeclaration>();
+  for (const d of program.getSemanticDiagnostics(sf)) {
+    const decl = nullishDeclaration(checker, sf, d);
+    if (decl) decls.add(decl);
+  }
+  return [...decls].map((node) => ({ node, kind: ts.isParameter(node) ? 'parameter' : 'variable', name: node.name.getText(sf) }));
+}
+
 /** Writes a plan into the project (in memory; call project.flush to save). */
 export function applyTypePlan(project: Project, plan: TypePlan): void {
   for (const [file, text] of plan.output) project.write(file, text);
+}
+
+// ---------------------------------------------------------------------------
+// Possibly-undefined locals (strictNullChecks)
+// ---------------------------------------------------------------------------
+
+/**
+ * "'x' is possibly 'undefined'/'null'" (TS18047/18048/18049), "Object is possibly …" (TS2531/2532/2533) and
+ * "'e' is of type 'unknown'" (TS18046, catch variables).
+ */
+export const NULLISH_CODES = new Set([18046, 18047, 18048, 18049, 2531, 2532, 2533]);
+
+/** Deepest node starting exactly at `pos` (the identifier a diagnostic points at). */
+export function nodeStartingAt(sf: ts.SourceFile, pos: number): ts.Node {
+  let found: ts.Node = sf;
+  const visit = (n: ts.Node): void => {
+    if (n.getStart(sf) <= pos && pos < n.end) {
+      found = n;
+      n.forEachChild(visit);
+    }
+  };
+  sf.forEachChild(visit);
+  return found;
+}
+
+/**
+ * The untyped local variable, parameter or catch variable behind a possibly-undefined error, e.g.
+ * `const res = await this.http.get(url).toPromise()` (RxJS 7 types it `T | undefined`) or
+ * `subscribe(res => res.data)`. Annotating it `: any` clears every such error on it without changing behaviour.
+ */
+export function nullishDeclaration(
+  checker: ts.TypeChecker, sf: ts.SourceFile, d: ts.Diagnostic,
+): ts.VariableDeclaration | ts.ParameterDeclaration | undefined {
+  if (!NULLISH_CODES.has(d.code) || d.start === undefined) return undefined;
+  const id = nodeStartingAt(sf, d.start);
+  if (!ts.isIdentifier(id)) return undefined;
+  const sym = checker.getSymbolAtLocation(id);
+  const decl = sym && sym.valueDeclaration;
+  if (!decl || decl.getSourceFile() !== sf) return undefined;
+  if (ts.isVariableDeclaration(decl)) {
+    const list = decl.parent;
+    const inForInOf = list && list.parent && (ts.isForInStatement(list.parent) || ts.isForOfStatement(list.parent));
+    if (decl.type || !ts.isIdentifier(decl.name) || inForInOf) return undefined;
+  } else if (ts.isParameter(decl)) {
+    if (decl.type || !ts.isIdentifier(decl.name) || decl.name.text === 'this' || decl.dotDotDotToken) return undefined;
+  } else {
+    return undefined;
+  }
+  if (d.code === 18046) return ts.isCatchClause(decl.parent) ? decl : undefined;
+  const t = checker.getTypeOfSymbolAtLocation(sym!, decl);
+  const nullish = ts.TypeFlags.Undefined | ts.TypeFlags.Null;
+  return t.flags & nullish || (t.isUnion() && t.types.some((u) => u.flags & nullish)) ? decl : undefined;
+}
+
+/** `name` → `name: any`; `x => …` → `(x: any) => …`. */
+export function anyAnnotationEdits(decl: ts.VariableDeclaration | ts.ParameterDeclaration, sf: ts.SourceFile): Edit[] {
+  const fn = decl.parent;
+  if (ts.isParameter(decl) && ts.isArrowFunction(fn) && !hasOpenParen(fn, sf)) {
+    return [{ pos: decl.getStart(sf), text: '(', order: -1 }, { pos: decl.end, text: ': any)', order: 0 }];
+  }
+  const after = ts.isParameter(decl) ? decl.questionToken || decl.name : decl.exclamationToken || decl.name;
+  return [{ pos: after.end, text: ': any', order: 0 }];
 }

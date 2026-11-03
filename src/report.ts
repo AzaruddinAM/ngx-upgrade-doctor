@@ -13,7 +13,7 @@ const LABEL: Record<Severity, string> = { error: c.red('BLOCKER'), warning: c.ye
 
 export function printFindings(results: RuleResult[], verbose: boolean): void {
   for (const { rule, severity, findings } of results) {
-    const fixable = rule.fix ? c.green(' [auto-fix]') : '';
+    const fixable = findings.some((f) => f.fixable) ? c.green(' [auto-fix]') : '';
     console.log(`\n${ICON[severity]} ${LABEL[severity]} ${c.bold(rule.title)} ${c.gray(`(${rule.id}, ${rule.hop})`)}${fixable}`);
     const shown = verbose ? findings : findings.slice(0, 8);
     for (const f of shown) {
@@ -28,7 +28,7 @@ export function printFindings(results: RuleResult[], verbose: boolean): void {
 
 export function printSummary(results: RuleResult[]): void {
   const s = summarize(results);
-  const fixable = results.filter((r) => r.rule.fix && r.severity !== 'info').reduce((n, r) => n + r.findings.length, 0);
+  const fixable = results.filter((r) => r.severity !== 'info').reduce((n, r) => n + r.findings.filter((f) => f.fixable).length, 0);
   console.log(`\n${c.bold('Summary:')} ${c.red(`${s.error} blocker(s)`)}, ${c.yellow(`${s.warning} warning(s)`)}, ${c.cyan(`${s.info} suggestion(s)`)}; ${c.green(`${fixable} auto-fixable`)}`);
 }
 

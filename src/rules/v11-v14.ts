@@ -2,8 +2,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Rule, RawFinding } from './types';
 import {
-  STYLES, addDevDep, configFiles, depFinding, ensureSassUse, removeDeps, removeJsonProp, scanFiles, transformFiles, tsFiles,
+  STYLES, addDevDep, configFiles, depFinding, ensureSassUse, importSpecifiers, deadCodeNote, isViewEngineBuild, removeDeps, removeJsonProp, scanFiles, transformFiles, tsFiles,
 } from './helpers';
+import { packageOf } from './env';
+import { Project } from '../project';
 
 // ---------------------------------------------------------------------------
 // v10 -> v11
@@ -60,7 +62,7 @@ const tslint: Rule = {
   title: 'TSLint/Codelyzer → ESLint (angular-eslint)',
   since: 11,
   deprecatedIn: 11,
-  removedIn: 13,
+  // TSLint never breaks `ng build`; only the tslint lint builder stops working.
   hint: 'ng add @angular-eslint/schematics, then ng g @angular-eslint/schematics:convert-tslint-to-eslint <project>, then npm uninstall tslint codelyzer and delete tslint.json.',
   docs: 'https://github.com/angular-eslint/angular-eslint#migrating-an-angular-cli-project-from-codelyzer-and-tslint',
   check({ project }) {
@@ -179,41 +181,109 @@ const viewEngineLibraries: Rule = {
   hint: 'Upgrade each library to a version built with Ivy partial compilation (run `ngx-upgrade-doctor deps --target <N> --online`). Libraries with no Ivy release must be replaced or forked — ngcc is gone in v16.',
   check({ project }) {
     const out: RawFinding[] = [];
-    const nm = path.join(project.root, 'node_modules');
+    const imported = importedPackages(project);
     // Needs installed packages; without node_modules there is nothing to inspect.
-    if (!fs.existsSync(nm)) return [];
     for (const name of Object.keys(project.declaredDeps)) {
-      if (name.startsWith('@angular/')) continue;
-      const dir = path.join(nm, name);
-      let pkg: any;
-      try {
-        pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
-      } catch {
-        continue;
-      }
-      const hasMetadata = (() => {
-        try {
-          return fs.readdirSync(dir).some((f) => f.endsWith('.metadata.json'));
-        } catch {
-          return false;
-        }
-      })();
-      if (hasMetadata || pkg.__processed_by_ivy_ngcc__) {
-        out.push({ file: 'package.json', message: `${name}@${pkg.version} ships View Engine metadata (needs ngcc)` });
-      }
+      if (name.startsWith('@angular/') || !isViewEngineBuild(project, name)) continue;
+      const version = project.installedVersion(name);
+      out.push(imported.has(name)
+        ? { file: 'package.json', message: `${name}@${version} ships View Engine metadata (needs ngcc)` }
+        : { file: 'package.json', severity: 'warning', message: `${name}@${version} ships View Engine metadata but no source file imports it — unused; npm uninstall ${name}` });
     }
     return out;
   },
 };
 
+/** Packages imported by any source file (comment-aware). */
+function importedPackages(project: Project): Set<string> {
+  const out = new Set<string>();
+  for (const file of tsFiles(project)) {
+    for (const { specifier } of importSpecifiers(project.read(file))) {
+      const pkg = packageOf(specifier);
+      if (pkg) out.add(pkg);
+    }
+  }
+  return out;
+}
+
+/**
+ * Drops ComponentFactoryResolver where it only feeds a ViewContainerRef:
+ * `vcr.createComponent(this.cfr.resolveComponentFactory(C))` and
+ * `const f = this.cfr.resolveComponentFactory(C); ... vcr.createComponent(f)` → `vcr.createComponent(C)`;
+ * then the constructor parameter and the import go once nothing else uses them.
+ */
+export function migrateComponentFactoryResolver(text: string): string {
+  let out = text.replace(/\.createComponent\(\s*this\.[\w$]+\.resolveComponentFactory\(\s*([\w$.]+)\s*\)/g, '.createComponent($1');
+  const decl = /^[ \t]*(?:const|let)\s+([\w$]+)\s*=\s*this\.[\w$]+\.resolveComponentFactory\(\s*([\w$.]+)\s*\);[ \t]*\r?\n/gm;
+  let m: RegExpExecArray | null;
+  while ((m = decl.exec(out))) {
+    const [line, name, cls] = m;
+    const rest = out.slice(m.index + line.length);
+    const uses = rest.match(new RegExp(`(?<![\\w$.])${name}(?![\\w$])`, 'g')) || [];
+    const asArg = rest.match(new RegExp(`\\.createComponent\\(\\s*${name}(?![\\w$])`, 'g')) || [];
+    if (!uses.length || uses.length !== asArg.length) continue;
+    out = out.slice(0, m.index) + rest.replace(new RegExp(`(\\.createComponent\\(\\s*)${name}(?![\\w$])`, 'g'), `$1${cls}`);
+    decl.lastIndex = m.index;
+  }
+  // The injected resolver, when nothing reads it any more.
+  const param = /(?:(?:private|public|protected)\s+)?(?:readonly\s+)?([\w$]+)\s*:\s*ComponentFactoryResolver\b/.exec(out);
+  if (param && !new RegExp(`this\\.${param[1]}\\b`).test(out)) {
+    out = out.replace(new RegExp(`,\\s*${escapeRe(param[0])}`), '').replace(new RegExp(`${escapeRe(param[0])}\\s*,?\\s*`), '');
+  }
+  if ((out.match(/\bComponentFactoryResolver\b/g) || []).length === 1) {
+    out = out.replace(/(import\s*\{[^}]*?)\s*,?\s*\bComponentFactoryResolver\b\s*(,?)([^}]*\}\s*from\s*['"]@angular\/core['"])/, (_w, a: string, comma: string, b: string) =>
+      `${a}${a.trim().endsWith('{') ? '' : comma}${b}`.replace(/\{\s*,/, '{ ').replace(/,\s*\}/, ' }'));
+  }
+  return out;
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 const componentFactoryResolver: Rule = {
   id: 'core/component-factory-resolver',
-  hop: 'v12-13',
-  title: 'ComponentFactoryResolver is deprecated',
+  hop: 'v12-22',
+  title: 'ComponentFactoryResolver (deprecated in v13, removed in v22)',
   since: 13,
   deprecatedIn: 13,
-  hint: 'viewContainerRef.createComponent(MyComponent) accepts the component class directly.',
-  check: ({ project }) => scanFiles(project, tsFiles(project), /\bComponentFactoryResolver\b(?=[\s,)])/, 'ComponentFactoryResolver usage'),
+  removedIn: 22,
+  fixRequires: 13,
+  hint: 'viewContainerRef.createComponent(MyComponent) takes the class directly — the auto-fix handles that pattern. For resolveComponentFactory(C).create(injector) use createComponent(C, { environmentInjector: appRef.injector, elementInjector: injector }) from @angular/core, then appRef.attachView(ref.hostView).',
+  check({ project, version }) {
+    const out: RawFinding[] = [];
+    for (const file of tsFiles(project)) {
+      const text = project.read(file);
+      if (!/\bComponentFactoryResolver\b/.test(text)) continue;
+      const fixable = !/\bComponentFactoryResolver\b/.test(migrateComponentFactoryResolver(text));
+      const what = version >= 22 ? 'removed in Angular 22' : 'deprecated';
+      for (const f of scanFiles(project, [file], /\bComponentFactoryResolver\b(?=[\s,)])/, `ComponentFactoryResolver usage — ${what}${deadCodeNote(project, file)}${fixable ? ' (auto-fixable)' : ' (manual)'}`)) {
+        out.push({ ...f, fixable });
+      }
+    }
+    return out;
+  },
+  fix({ project }) {
+    transformFiles(project, tsFiles(project), migrateComponentFactoryResolver);
+  },
+};
+
+const hammerLoader: Rule = {
+  id: 'core/hammer-loader',
+  hop: 'v21-22',
+  title: 'HammerLoader / HAMMER_LOADER were removed in Angular 22',
+  since: 22,
+  removedIn: 22,
+  hint: 'Remove the HAMMER_LOADER provider and load hammerjs yourself (import \'hammerjs\' in main.ts) if gestures are still needed; or replace Hammer gestures with pointer events.',
+  check: ({ project }) => {
+    const out: RawFinding[] = [];
+    for (const file of tsFiles(project)) {
+      const text = project.read(file);
+      if (!/\bHAMMER_LOADER\b|\bHammerLoader\b/.test(text)) continue;
+      out.push(...scanFiles(project, [file], /\b(HAMMER_LOADER|HammerLoader)\b/, (m) => `${m[1]} usage — removed in Angular 22${deadCodeNote(project, file)}`));
+    }
+    return out;
+  },
 };
 
 const ieBrowserslist: Rule = {
@@ -265,5 +335,5 @@ const untypedForms: Rule = {
 
 export const midRules: Rule[] = [
   asyncTesting, nodeSass, tslint, materialTheming, zoneImports, protractor,
-  tildeImports, viewEngineLibraries, componentFactoryResolver, ieBrowserslist, defaultProject, untypedForms,
+  tildeImports, viewEngineLibraries, componentFactoryResolver, hammerLoader, ieBrowserslist, defaultProject, untypedForms,
 ];

@@ -19,6 +19,8 @@ export interface RuleResult {
 
 export interface FixResult {
   applied: string[];
+  /** Fixes that ran but changed nothing (their findings need a human). */
+  unchanged: string[];
   /** Rules whose fix needs a newer installed Angular — run `current --fix` after `ng update`. */
   deferred: Array<{ rule: Rule; requires: number }>;
   changedFiles: string[];
@@ -48,9 +50,14 @@ export function scan(opts: RunOptions): RuleResult[] {
     } catch (e) {
       raw = [{ message: `Rule crashed: ${(e as Error).message}` }];
     }
-    if (!raw.length) continue;
-    const findings = raw.map((f) => ({ ...f, ruleId: rule.id, severity, fixable: !!rule.fix }));
-    results.push({ rule, severity, findings });
+    // One result per severity, so a rule can report some findings below its own level.
+    const bySeverity = new Map<Severity, Finding[]>();
+    for (const f of raw) {
+      const s = f.severity || severity;
+      if (!bySeverity.has(s)) bySeverity.set(s, []);
+      bySeverity.get(s)!.push({ ...f, ruleId: rule.id, severity: s, fixable: !!rule.fix && f.fixable !== false });
+    }
+    for (const [s, findings] of bySeverity) results.push({ rule, severity: s, findings });
   }
   return results.sort((a, b) => RANK[b.severity] - RANK[a.severity]);
 }
@@ -61,16 +68,21 @@ export function scan(opts: RunOptions): RuleResult[] {
  */
 export function fix(opts: RunOptions & { dryRun?: boolean }): FixResult {
   const ctx = contextFor(opts);
-  const result: FixResult = { applied: [], deferred: [], changedFiles: [] };
-  for (const { rule, severity } of scan(opts)) {
-    if (!rule.fix || severity === 'info') continue;
+  const result: FixResult = { applied: [], unchanged: [], deferred: [], changedFiles: [] };
+  const seen = new Set<string>();
+  for (const { rule, severity, findings } of scan(opts)) {
+    // Suggestions are only fixed when asked for by name (--only <rule>), e.g. opt-in style rules.
+    const named = !!opts.only && opts.only.includes(rule.id);
+    if (!rule.fix || (severity === 'info' && !named) || seen.has(rule.id) || !findings.some((f) => f.fixable)) continue;
+    seen.add(rule.id);
     const requires = rule.fixRequires || 0;
     if (ctx.currentVersion < requires) {
       result.deferred.push({ rule, requires });
       continue;
     }
+    const before = opts.project.writeCount;
     rule.fix(ctx);
-    result.applied.push(rule.id);
+    (opts.project.writeCount > before ? result.applied : result.unchanged).push(rule.id);
   }
   result.changedFiles = opts.project.flush(!!opts.dryRun);
   return result;

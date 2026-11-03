@@ -1,0 +1,8 @@
+@import 'variables';
+@import url('https://fonts.googleapis.com/css?family=Roboto');
+@import 'print.css';
+// @import 'commented';
+$c: map-get($theme, primary);
+$d: darken($c, 10%);
+$e: map.get($theme, accent);
+$f: mat.m2-get-color-from-palette($p);

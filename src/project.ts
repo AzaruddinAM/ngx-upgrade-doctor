@@ -25,6 +25,8 @@ export class Project {
   private fileList?: string[];
   private cache = new Map<string, string>();
   private dirty = new Set<string>();
+  private removed = new Set<string>();
+  private writes = 0;
 
   constructor(root: string) {
     this.root = path.resolve(root);
@@ -71,6 +73,7 @@ export class Project {
   }
 
   exists(rel: string): boolean {
+    if (this.removed.has(rel)) return false;
     return this.cache.has(rel) || fs.existsSync(path.join(this.root, rel));
   }
 
@@ -94,6 +97,7 @@ export class Project {
 
   write(rel: string, content: string): void {
     if (this.exists(rel) && this.read(rel) === content) return;
+    this.writes++;
     this.cache.set(rel, content);
     this.dirty.add(rel);
   }
@@ -104,10 +108,25 @@ export class Project {
     this.write(rel, JSON.stringify(value, null, indent ? indent[1] : 2) + '\n');
   }
 
+  /** Deletes a file (on flush), e.g. after a rename; it disappears from reads and listings at once. */
+  remove(rel: string): void {
+    if (!this.exists(rel) || this.removed.has(rel)) return;
+    this.writes++;
+    this.removed.add(rel);
+    this.cache.delete(rel);
+    this.dirty.add(rel);
+    if (this.fileList) this.fileList = this.fileList.filter((f) => f !== rel);
+  }
+
   /** Workspace files (relative, forward slashes) with one of the given extensions. */
   files(...exts: string[]): string[] {
     if (!this.fileList) this.fileList = walk(this.root, '');
     return this.fileList.filter((f) => exts.some((e) => f.endsWith(e)));
+  }
+
+  /** Number of writes that changed content — lets callers tell whether a fix did anything. */
+  get writeCount(): number {
+    return this.writes;
   }
 
   get changedFiles(): string[] {
@@ -120,6 +139,10 @@ export class Project {
     if (!dryRun) {
       for (const rel of changed) {
         const abs = path.join(this.root, rel);
+        if (this.removed.has(rel)) {
+          fs.rmSync(abs, { force: true, recursive: true });
+          continue;
+        }
         fs.mkdirSync(path.dirname(abs), { recursive: true });
         fs.writeFileSync(abs, this.cache.get(rel)!, 'utf8');
       }

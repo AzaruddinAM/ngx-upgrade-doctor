@@ -1,5 +1,5 @@
 import * as path from 'path';
-import * as ts from 'typescript';
+import * as bundledTs from 'typescript';
 import { Project } from './project';
 import { Rule } from './rules';
 import { RuleResult } from './engine';
@@ -9,12 +9,38 @@ const TSC_RULE: Rule = {
   hop: 'current',
   title: 'TypeScript compiler errors',
   since: 0,
-  hint: 'Template type errors only show up in `ng build`; run it too.',
+  hint: 'TypeScript errors in .ts files only. Template syntax errors are reported by template/parse-errors (needs @angular/compiler installed); template TYPE errors still only show up in `ng build`.',
   check: () => [],
 };
 
-/** Compiles the app tsconfig and returns its errors as a rule result. */
-export function compileDiagnostics(project: Project): RuleResult | undefined {
+type TypeScriptApi = typeof bundledTs;
+
+export interface ProjectTypeScript {
+  ts: TypeScriptApi;
+  version: string;
+  /** True when the project has no typescript installed and the doctor's own copy is used. */
+  bundled: boolean;
+}
+
+/**
+ * The project's own typescript (node_modules/typescript), so diagnostics match `ng build`;
+ * newer lib typings in the bundled compiler report errors the project's compiler does not.
+ */
+export function projectTypeScript(root: string): ProjectTypeScript {
+  try {
+    const resolved = require.resolve('typescript', { paths: [root] });
+    if (resolved !== require.resolve('typescript')) {
+      const ts: TypeScriptApi = require(resolved);
+      return { ts, version: ts.version, bundled: false };
+    }
+  } catch {
+    // not installed in the project
+  }
+  return { ts: bundledTs, version: bundledTs.version, bundled: true };
+}
+
+/** Compiles the app tsconfig with the project's TypeScript and returns its errors as a rule result. */
+export function compileDiagnostics(project: Project, ts: TypeScriptApi = projectTypeScript(project.root).ts): RuleResult | undefined {
   const candidates = ['tsconfig.app.json', 'src/tsconfig.app.json', 'tsconfig.json'];
   const rel = candidates.find((f) => project.exists(f));
   if (!rel) return undefined;

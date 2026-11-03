@@ -1,6 +1,6 @@
 {
   "name": "ngx-upgrade-doctor",
-  "version": "0.3.0",
+  "version": "0.5.1",
   "description": "Scan, fix and plan Angular major-version upgrades one hop at a time (6 -> 22), with dependency advice and an explicit-types pass for v22+.",
   "keywords": [
     "angular",
@@ -8,9 +8,25 @@
     "migration",
     "ng update",
     "codemod",
-    "cli"
+    "cli",
+    "angular-material",
+    "mdc",
+    "strict-mode"
   ],
   "license": "MIT",
+  "author": "Azaruddin A M (https://github.com/AzaruddinAM)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AzaruddinAM/ngx-upgrade-doctor.git"
+  },
+  "homepage": "https://github.com/AzaruddinAM/ngx-upgrade-doctor#readme",
+  "bugs": {
+    "url": "https://github.com/AzaruddinAM/ngx-upgrade-doctor/issues"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/AzaruddinAM"
+  },
   "bin": {
     "ngx-upgrade-doctor": "dist/cli.js"
   },
@@ -18,7 +34,8 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=14.17"
